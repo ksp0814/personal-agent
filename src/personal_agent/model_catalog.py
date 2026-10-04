@@ -5,8 +5,16 @@ import subprocess
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
+CODEX_RPC_TIMEOUT_SECONDS = 30
 
-def _call_codex(method: str, params: Dict[str, Any], executable: str = "codex", environment: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+
+def _call_codex(
+    method: str,
+    params: Dict[str, Any],
+    executable: str = "codex",
+    environment: Optional[Dict[str, str]] = None,
+    timeout: int = CODEX_RPC_TIMEOUT_SECONDS,
+) -> Dict[str, Any]:
     resolved = shutil.which(executable) or executable
     command = [resolved, "app-server", "--listen", "stdio://"]
     if platform.system() == "Windows" and resolved.lower().endswith((".cmd", ".bat")):
@@ -28,22 +36,34 @@ def _call_codex(method: str, params: Dict[str, Any], executable: str = "codex", 
         {"id": 2, "method": method, "params": params},
     ]
     try:
-        process.stdin.write("\n".join(json.dumps(request) for request in requests) + "\n")
-        process.stdin.flush()
-        for line in process.stdout:
+        stdout, stderr = process.communicate(
+            input="\n".join(json.dumps(request) for request in requests) + "\n",
+            timeout=timeout,
+        )
+        for line in stdout.splitlines():
             try:
                 message = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if not isinstance(message, dict):
+                continue
             if message.get("id") != 2:
                 continue
-            return message.get("result", {})
-        error = process.stderr.read().strip()
-        raise RuntimeError(error or "Codex 모델 목록 응답이 없습니다.")
+            if "error" in message:
+                raise RuntimeError(f"Codex 응답 오류: {message['error']}")
+            result = message.get("result")
+            if not isinstance(result, dict):
+                raise RuntimeError("Codex 응답 형식이 올바르지 않습니다.")
+            return result
+        raise RuntimeError(stderr.strip() or "Codex 사용량 응답이 없습니다.")
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            "Codex 사용량 요청 시간이 초과되었습니다. 초기화 요청은 결과를 확인한 뒤 같은 요청으로 다시 시도하세요."
+        ) from exc
     finally:
         if process.poll() is None:
-            process.terminate()
-            process.wait(timeout=5)
+            process.kill()
+            process.communicate()
 
 
 def fetch_codex_rate_limits(executable: str = "codex", environment: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
@@ -51,10 +71,18 @@ def fetch_codex_rate_limits(executable: str = "codex", environment: Optional[Dic
     return _call_codex("account/rateLimits/read", {}, executable, environment)
 
 
-def consume_codex_reset_credit(credit_id: str = "", executable: str = "codex", environment: Optional[Dict[str, str]] = None) -> str:
+def consume_codex_reset_credit(
+    credit_id: str = "",
+    executable: str = "codex",
+    environment: Optional[Dict[str, str]] = None,
+    idempotency_key: Optional[str] = None,
+) -> str:
     """Consume one earned Codex rate-limit reset credit."""
-    params = {"idempotencyKey": str(uuid4())}
+    params = {"idempotencyKey": idempotency_key or str(uuid4())}
     if credit_id:
         params["creditId"] = credit_id
     result = _call_codex("account/rateLimitResetCredit/consume", params, executable, environment)
-    return result.get("outcome", "unknown")
+    outcome = result.get("outcome")
+    if not isinstance(outcome, str) or not outcome:
+        raise RuntimeError("Codex가 초기화 요청 결과를 반환하지 않았습니다.")
+    return outcome

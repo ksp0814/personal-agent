@@ -5,6 +5,7 @@ export type WorkspaceSnapshot = {
   files: string[]
   directories: string[]
   git: { available: boolean; branch: string; entries: Record<string, string> }
+  rollbackWarning?: string | null
 }
 
 export async function getWorkspaceSnapshot(workspace: string): Promise<WorkspaceSnapshot> {
@@ -27,10 +28,10 @@ export async function getUsageSnapshot(workspace: string): Promise<UsageSnapshot
   })
 }
 
-export function resetUsage(workspace: string, creditId = '') {
+export function resetUsage(workspace: string, creditId = '', idempotencyKey = '') {
   return invoke<{ outcome: string }>('bridge_request', {
     workspace,
-    request: { method: 'usage_reset', creditId },
+    request: { method: 'usage_reset', creditId, idempotencyKey },
   })
 }
 
@@ -58,7 +59,7 @@ export function approveFile(workspace: string, path: string) {
 }
 
 export function rollbackFile(workspace: string, path: string) {
-  return invoke<{ path: string; action: string; location: string }>('bridge_request', {
+  return invoke<{ path: string; action: string; location: string; recoveryLocation?: string | null }>('bridge_request', {
     workspace,
     request: { method: 'rollback_file', path },
   })
@@ -73,25 +74,32 @@ export type TerminalEvent = {
 
 type TerminalEventListener = (event: TerminalEvent) => void
 const terminalListeners = new Map<string, Set<TerminalEventListener>>()
-let terminalEventListenerStarted = false
+let terminalEventRouter: Promise<void> | undefined
 
-function startTerminalEventRouter() {
-  if (terminalEventListenerStarted) return
-  terminalEventListenerStarted = true
-  void listen<TerminalEvent>('terminal-event', (event) => {
-    const listeners = terminalListeners.get(event.payload.session_id)
-    listeners?.forEach((listener) => listener(event.payload))
-  })
+function startTerminalEventRouter(): Promise<void> {
+  if (!terminalEventRouter) {
+    terminalEventRouter = listen<TerminalEvent>('terminal-event', (event) => {
+      const listeners = terminalListeners.get(event.payload.session_id)
+      listeners?.forEach((listener) => listener(event.payload))
+    }).then(() => undefined).catch((error: unknown) => {
+      terminalEventRouter = undefined
+      throw error
+    })
+  }
+  return terminalEventRouter
 }
 
 export function subscribeTerminalEvents(sessionId: string, listener: TerminalEventListener) {
-  startTerminalEventRouter()
+  const ready = startTerminalEventRouter()
   const listeners = terminalListeners.get(sessionId) ?? new Set<TerminalEventListener>()
   listeners.add(listener)
   terminalListeners.set(sessionId, listeners)
-  return () => {
-    listeners.delete(listener)
-    if (listeners.size === 0) terminalListeners.delete(sessionId)
+  return {
+    ready,
+    unsubscribe: () => {
+      listeners.delete(listener)
+      if (listeners.size === 0) terminalListeners.delete(sessionId)
+    },
   }
 }
 

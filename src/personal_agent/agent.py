@@ -169,7 +169,7 @@ class Agent:
             memories = self.memory.recent()
             return "\n".join(f"- {item}" for item in memories) if memories else "저장된 기억이 없습니다."
         if request == "/test":
-            return self.tools.run_tests()
+            return self.tools.run_validation()
         if request == "/check":
             response = self.tools.run_validation()
             self.memory.record_interaction(request, response)

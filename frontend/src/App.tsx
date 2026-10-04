@@ -109,6 +109,7 @@ function App() {
   const paletteInputRef = useRef<HTMLInputElement>(null)
   const fileSearchRef = useRef<HTMLInputElement>(null)
   const noticeTimer = useRef<number | undefined>(undefined)
+  const usageResetKeys = useRef<Record<string, string>>({})
   const showNotice = useCallback((message: string) => {
     setNotice(message)
     if (noticeTimer.current !== undefined) window.clearTimeout(noticeTimer.current)
@@ -185,8 +186,10 @@ function App() {
       if (cachedPaths.length > MAX_SNAPSHOT_CACHE_ENTRIES) {
         delete workspaceSnapshotCache.current[cachedPaths[0]]
       }
-      if (currentWorkspacePath.current === workspacePath) applyWorkspaceSnapshot(snapshot)
-      if (currentWorkspacePath.current === workspacePath) showNotice('파일 목록과 Git 상태를 새로고침했습니다.')
+      if (currentWorkspacePath.current === workspacePath) {
+        applyWorkspaceSnapshot(snapshot)
+        showNotice(snapshot.rollbackWarning ?? '파일 목록과 Git 상태를 새로고침했습니다.')
+      }
     } catch (error) {
       if (currentWorkspacePath.current === workspacePath) showNotice(`새로고침 실패: ${String(error)}`)
     } finally {
@@ -211,15 +214,15 @@ function App() {
     const workspacePath = workspace.path
     const cached = usageCache.current[workspacePath]
     if (cached) {
-      applyUsageSnapshot(cached.snapshot)
+      if (currentWorkspacePath.current === workspacePath) applyUsageSnapshot(cached.snapshot)
       if (!force && Date.now() - cached.refreshedAt < 30_000) return
     }
     try {
       const snapshot = await getUsageSnapshot(workspacePath)
       usageCache.current[workspacePath] = { snapshot, refreshedAt: Date.now() }
-      applyUsageSnapshot(snapshot)
+      if (currentWorkspacePath.current === workspacePath) applyUsageSnapshot(snapshot)
     } catch {
-      setUsage({ percent: null, credits: 0, creditId: '' })
+      if (currentWorkspacePath.current === workspacePath) setUsage({ percent: null, credits: 0, creditId: '' })
     }
   }
 
@@ -227,12 +230,23 @@ function App() {
     if (!workspace || !usage.credits || usageResetting) return
     if (!window.confirm(`사용량 초기화권 ${usage.credits}개 중 1개를 사용하시겠습니까?`)) return
     setUsageResetting(true)
+    const resetKey = JSON.stringify([workspace.path, usage.creditId])
+    const storedResetKey = `personal-agent:usage-reset-request:${resetKey}`
+    let idempotencyKey: string | undefined = usageResetKeys.current[resetKey] || undefined
+    if (!idempotencyKey) {
+      try { idempotencyKey = window.localStorage.getItem(storedResetKey) ?? undefined } catch { /* storage may be unavailable */ }
+    }
+    const requestKey = idempotencyKey ?? crypto.randomUUID()
+    usageResetKeys.current[resetKey] = requestKey
+    try { window.localStorage.setItem(storedResetKey, requestKey) } catch { /* in-memory retry remains available */ }
     try {
-      await resetUsage(workspace.path, usage.creditId)
+      await resetUsage(workspace.path, usage.creditId, requestKey)
+      delete usageResetKeys.current[resetKey]
+      try { window.localStorage.removeItem(storedResetKey) } catch { /* leave cleanup for a later run */ }
       await refreshUsage(true)
       showNotice('사용량 초기화권을 사용했습니다.')
     } catch (error) {
-      showNotice(`사용량 초기화 실패: ${String(error)}`)
+      showNotice(`사용량 초기화 실패: ${String(error)}. 다시 시도하면 같은 요청으로 처리됩니다.`)
     } finally {
       setUsageResetting(false)
     }
@@ -382,7 +396,13 @@ function App() {
   const rollbackChangedFile = async (path: string) => {
     if (!workspace) return
     if (!window.confirm(`${path} 파일을 기준 상태로 되돌릴까요? 새 파일은 복구 보관함으로 이동합니다.`)) return
-    try { await rollbackFile(workspace.path, path); await refreshWorkspace(true); showNotice(`${path} 변경을 되돌렸습니다.`) } catch (error) { showNotice(`되돌리기 실패: ${String(error)}`) }
+    try {
+      const result = await rollbackFile(workspace.path, path)
+      await refreshWorkspace(true)
+      showNotice(result.recoveryLocation
+        ? `${path} 변경을 되돌렸습니다. 이전 내용 보관 위치: ${result.recoveryLocation}`
+        : `${path} 변경을 되돌렸습니다.`)
+    } catch (error) { showNotice(`되돌리기 실패: ${String(error)}`) }
   }
 
   const addWorkspace = async () => {

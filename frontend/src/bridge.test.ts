@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke } from '@tauri-apps/api/core'
-import { getWorkspaceSnapshot, readDiff, startTerminal, writeTerminal } from './bridge'
+import { listen } from '@tauri-apps/api/event'
+import { getWorkspaceSnapshot, readDiff, resetUsage, startTerminal, subscribeTerminalEvents, writeTerminal } from './bridge'
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -29,6 +31,33 @@ describe('Tauri bridge commands', () => {
       workspace: 'C:/workspace',
       request: { method: 'git_diff_file', path: 'README.md' },
     })
+  })
+
+  it('passes a stable idempotency key when consuming a reset credit', async () => {
+    await resetUsage('C:/workspace', 'credit-1', 'request-1')
+
+    expect(invoke).toHaveBeenCalledWith('bridge_request', {
+      workspace: 'C:/workspace',
+      request: { method: 'usage_reset', creditId: 'credit-1', idempotencyKey: 'request-1' },
+    })
+  })
+
+  it('exposes readiness for terminal event subscription', async () => {
+    let finishRegistration: (() => void) | undefined
+    vi.mocked(listen).mockImplementationOnce(() => new Promise<() => void>((resolve) => {
+      finishRegistration = () => resolve(() => undefined)
+    }))
+
+    const subscription = subscribeTerminalEvents('session-1', vi.fn())
+    let ready = false
+    void subscription.ready.then(() => { ready = true })
+    await Promise.resolve()
+    expect(ready).toBe(false)
+
+    finishRegistration?.()
+    await subscription.ready
+    expect(ready).toBe(true)
+    subscription.unsubscribe()
   })
 
   it('routes terminal lifecycle and input commands to Tauri', async () => {

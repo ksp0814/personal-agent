@@ -59,13 +59,15 @@ export const TerminalPane = memo(function TerminalPane({ sessionId, workspace }:
       pendingOutput += output
       if (outputTimer === undefined) outputTimer = window.setTimeout(flushOutput, 16)
     }
-    const unsubscribe = subscribeTerminalEvents(terminalId, (payload: TerminalEvent) => {
+    const eventSubscription = subscribeTerminalEvents(terminalId, (payload: TerminalEvent) => {
       if (payload.event === 'output' && payload.data) queueOutput(payload.data)
       if (payload.event === 'error' && payload.message) queueOutput(`\r\n\x1b[31m${payload.message}\x1b[0m\r\n`)
     })
 
     const start = async () => {
       try {
+        await eventSubscription.ready
+        if (stopped) return
         const reused = await startTerminal(terminalId, workspace)
         if (stopped) {
           return
@@ -78,7 +80,7 @@ export const TerminalPane = memo(function TerminalPane({ sessionId, workspace }:
         await resizeTerminal(terminalId, terminal.cols, terminal.rows)
         lastSize = `${terminal.cols}x${terminal.rows}`
       } catch (error) {
-        terminal.write(`\x1b[31m터미널을 시작하지 못했습니다: ${String(error)}\x1b[0m\r\n`)
+        if (!stopped) terminal.write(`\x1b[31m터미널을 시작하지 못했습니다: ${String(error)}\x1b[0m\r\n`)
       }
     }
     void start()
@@ -105,7 +107,7 @@ export const TerminalPane = memo(function TerminalPane({ sessionId, workspace }:
     return () => {
       stopped = true
       terminalReady = false
-      unsubscribe()
+      eventSubscription.unsubscribe()
       input.dispose()
       if (resizeTimer !== undefined) window.clearTimeout(resizeTimer)
       if (outputTimer !== undefined) window.clearTimeout(outputTimer)

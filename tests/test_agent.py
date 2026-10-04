@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from personal_agent.agent import Agent, OfflineProvider
 from personal_agent.memory import Memory
@@ -39,6 +40,13 @@ class AgentTests(unittest.TestCase):
             agent.handle("간단한 요청")
             self.assertIn("간단한 요청", agent.handle("/history"))
             self.assertIn("간단한 요청", agent.handle("/resume"))
+
+    def test_test_command_uses_the_standard_library_test_runner(self):
+        with tempfile.TemporaryDirectory() as directory:
+            agent = make_agent(Path(directory))
+            with patch.object(agent.tools, "run_validation", return_value="unittest result") as run_validation:
+                self.assertEqual(agent.handle("/test"), "unittest result")
+            run_validation.assert_called_once_with()
 
 
 if __name__ == "__main__":

@@ -57,6 +57,9 @@ def run(workspace: Path) -> None:
                 continue
             try:
                 request = json.loads(line)
+                if not isinstance(request, dict):
+                    emit("error", message="터미널 명령은 JSON 객체여야 합니다.")
+                    continue
                 command = request.get("command")
                 if command == "start":
                     if session is not None:

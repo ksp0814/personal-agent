@@ -94,10 +94,6 @@ class WorkspaceTools:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 
-    def run_tests(self) -> str:
-        result = subprocess.run([sys.executable, "-m", "pytest", "-q"], cwd=self.root, text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=120)
-        return (result.stdout + result.stderr).strip() or f"pytest 종료 코드: {result.returncode}"
-
     def git_status(self) -> str:
         return self._run_readonly(["git", "status", "--short"], "Git 상태를 확인하지 못했습니다") or "변경 사항이 없습니다."
 
@@ -214,7 +210,7 @@ class WorkspaceTools:
                 results.append(f"검증 실패: {exc}")
                 continue
             output = (result.stdout + result.stderr).strip()
-            results.append(f"$ {' '.join(command)}\n{output or f'종료 코드: {result.returncode}'}")
+            results.append(f"$ {' '.join(command)}\n{output or '출력이 없습니다.'}\n종료 코드: {result.returncode}")
         return "\n\n".join(results)
 
     def _run_readonly(self, command: list[str], error: str) -> str:

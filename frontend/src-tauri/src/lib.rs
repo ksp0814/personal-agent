@@ -262,14 +262,14 @@ mod commands {
         session_id: String,
         workspace: String,
     ) -> Result<bool, String> {
-        {
-            let terminals = state
-                .0
-                .lock()
-                .map_err(|_| "터미널 상태 잠금에 실패했습니다.".to_string())?;
-            if terminals.contains_key(&session_id) {
-                return Ok(true);
-            }
+        // Keep start idempotent across concurrent Tauri commands. The process
+        // spawn path does not wait for terminal output while this lock is held.
+        let mut terminals = state
+            .0
+            .lock()
+            .map_err(|_| "터미널 상태 잠금에 실패했습니다.".to_string())?;
+        if terminals.contains_key(&session_id) {
+            return Ok(true);
         }
         let mut command = if let Some(bridge) = bundled_bridge_path(&app) {
             let mut command = Command::new(bridge);
@@ -350,10 +350,6 @@ mod commands {
             }
         });
 
-        let mut terminals = state
-            .0
-            .lock()
-            .map_err(|_| "터미널 상태 잠금에 실패했습니다.".to_string())?;
         terminals.insert(
             session_id,
             ManagedTerminal {
