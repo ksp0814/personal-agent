@@ -1,0 +1,74 @@
+name: Tag dev release
+
+on:
+  push:
+    branches:
+      - dev
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-release-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require release token
+        shell: bash
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if [[ -z "$RELEASE_TOKEN" ]]; then
+            echo "::error::RELEASE_TOKEN secret is required to trigger the tag workflow."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Create next release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags origin
+
+          head_sha="$(git ls-remote origin refs/heads/dev | cut -f1)"
+          if [[ -z "$head_sha" ]]; then
+            echo "::error::Could not find the remote dev branch."
+            exit 1
+          fi
+          if [[ "$head_sha" != "$GITHUB_SHA" ]]; then
+            echo "A newer dev commit exists; skipping this release."
+            exit 0
+          fi
+          if git tag --points-at "$GITHUB_SHA" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "This commit already has a release tag."
+            exit 0
+          fi
+
+          tag="$(python3 - <<'PY'
+          import re
+          import subprocess
+
+          versions = []
+          for name in subprocess.check_output(["git", "tag", "--list", "v*"], text=True).splitlines():
+              match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", name)
+              if match:
+                  versions.append(tuple(int(part) for part in match.groups()))
+          if not versions:
+              raise SystemExit("No vMAJOR.MINOR.PATCH release tag exists.")
+          major, minor, patch = max(versions)
+          print(f"v{major}.{minor}.{patch + 1}")
+          PY
+          )"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" "$GITHUB_SHA" -m "dev 자동 릴리즈 $tag"
+          git push origin "refs/tags/$tag"

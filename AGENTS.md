@@ -87,6 +87,13 @@ refactor: 사용하지 않는 모델 선택 코드 제거
 - push 전 `git status`와 `git diff --stat`를 확인합니다.
 - 강제 push, `git reset --hard`, 대량 삭제는 명시적 승인 없이 실행하지 않습니다.
 
+## 릴리즈 규칙
+
+- `dev`에 푸시하면 `.github/workflows/dev-release.yml`이 최신 커밋에 다음 `vMAJOR.MINOR.PATCH` 태그를 생성합니다. 이미 태그가 붙은 커밋은 중복 생성하지 않습니다.
+- `.github/workflows/release.yml`은 버전 태그에서 Python·프론트엔드 테스트와 Windows 빌드를 실행합니다. 서명된 설치 파일과 업데이트 파일을 확인한 뒤 릴리즈를 즉시 공개합니다.
+- 공개된 최신 릴리즈는 설치된 앱의 업데이트 확인 대상입니다. 사용자가 앱에서 업데이트를 선택하면 설치합니다.
+- 자동 태그 생성에는 저장소 쓰기 권한이 있는 `RELEASE_TOKEN` 비밀정보가 필요합니다. 값은 코드·로그·문서에 기록하지 않습니다.
+
 ## 문서
 
 - 실행 방법과 사용자-visible 기능이 바뀌면 `README.md`도 함께 갱신합니다.
