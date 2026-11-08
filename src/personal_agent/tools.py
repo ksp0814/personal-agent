@@ -33,12 +33,19 @@ class WorkspaceTools:
 
     def list_files(self, limit: int = 100) -> list[str]:
         files = []
-        for path in sorted(self.root.rglob("*")):
-            if any(part in IGNORED_DIRECTORIES for part in path.parts) or not path.is_file():
+        pending = [self.root]
+        while pending and len(files) < limit:
+            path = pending.pop()
+            if path != self.root and path.name in IGNORED_DIRECTORIES:
                 continue
-            files.append(str(path.relative_to(self.root)))
-            if len(files) >= limit:
-                break
+            try:
+                if path.is_dir() and not path.is_symlink():
+                    with os.scandir(path) as entries:
+                        pending.extend(sorted((Path(entry.path) for entry in entries), reverse=True))
+                elif path.is_file():
+                    files.append(str(path.relative_to(self.root)))
+            except OSError:
+                continue
         return files
 
     def scan_tree(self, file_limit: int = 100_000, directory_limit: int = 10_000) -> tuple[list[str], list[str]]:

@@ -19,6 +19,34 @@ class WorkspaceToolsTests(unittest.TestCase):
             result = WorkspaceTools(root).run_validation()
             self.assertIn("unittest discover", result)
 
+    def test_list_files_preserves_order_and_limit_while_skipping_ignored_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".venv").mkdir()
+            (root / "a-folder" / "nested").mkdir(parents=True)
+            (root / "a-folder" / "node_modules").mkdir()
+            for relative in (
+                "readme.md",
+                "a-folder/child.txt",
+                "a-folder/nested/deep.txt",
+                "z.txt",
+                ".venv/site.py",
+                "a-folder/node_modules/package.js",
+            ):
+                (root / relative).write_text(relative, encoding="utf-8")
+
+            expected = [
+                str(Path("a-folder") / "child.txt"),
+                str(Path("a-folder") / "nested" / "deep.txt"),
+                "readme.md",
+                "z.txt",
+            ]
+            tools = WorkspaceTools(root)
+
+            self.assertEqual(tools.list_files(), expected)
+            self.assertEqual(tools.list_files(limit=2), expected[:2])
+            self.assertEqual(tools.list_files(limit=0), [])
+
     def test_scan_tree_ignores_virtual_environments_and_caches(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
