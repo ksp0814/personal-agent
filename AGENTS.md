@@ -89,10 +89,10 @@ refactor: 사용하지 않는 모델 선택 코드 제거
 
 ## 릴리즈 규칙
 
-- `dev`에 푸시하면 `.github/workflows/dev-release.yml`이 최신 커밋에 다음 `vMAJOR.MINOR.PATCH` 태그를 생성합니다. 이미 태그가 붙은 커밋은 중복 생성하지 않습니다.
-- `.github/workflows/release.yml`은 버전 태그에서 Python·프론트엔드 테스트와 Windows 빌드를 실행합니다. 서명된 설치 파일과 업데이트 파일을 확인한 뒤 릴리즈를 즉시 공개합니다.
+- `dev` 푸시만으로는 태그를 만들거나 릴리즈를 시작하지 않습니다.
+- `vMAJOR.MINOR.PATCH` 태그를 수동으로 푸시하면 `.github/workflows/release.yml`이 Python·프론트엔드 테스트와 Windows 빌드를 실행합니다. 서명된 설치 파일과 업데이트 파일을 확인한 뒤 릴리즈를 공개합니다.
 - 공개된 최신 릴리즈는 설치된 앱의 업데이트 확인 대상입니다. 사용자가 앱에서 업데이트를 선택하면 설치합니다.
-- 자동 태그 생성에는 저장소 쓰기 권한이 있는 `RELEASE_TOKEN` 비밀정보가 필요합니다. 값은 코드·로그·문서에 기록하지 않습니다.
+- 릴리즈 게시에는 설정된 경우 `RELEASE_TOKEN`, 그렇지 않으면 `GITHUB_TOKEN`을 사용합니다. 비밀정보 값은 코드·로그·문서에 기록하지 않습니다.
 
 ## 문서
 

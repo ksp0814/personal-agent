@@ -99,9 +99,9 @@ agent
 
 ### Windows 배포
 
-`dev`에 푸시하면 GitHub Actions가 최신 커밋에 다음 패치 버전 태그(`vMAJOR.MINOR.PATCH`)를 자동으로 붙입니다. 연속 푸시로 더 새 커밋이 있으면 이전 태그 작업은 건너뜁니다.
+`dev`에 푸시하는 것만으로는 릴리즈가 시작되지 않습니다. 배포할 커밋에 `vMAJOR.MINOR.PATCH` 태그를 수동으로 만들고 푸시하면 GitHub Actions가 릴리즈를 시작합니다.
 
-태그에서 Python·프론트엔드 테스트를 실행하고, Python 브리지를 PyInstaller로 패키징한 뒤 Tauri MSI/NSIS 설치 파일과 서명된 업데이트 파일을 만듭니다. 파일이 준비되면 GitHub Release를 즉시 공개합니다. 수동으로 만든 `v*` 태그도 같은 릴리즈 절차를 실행합니다.
+태그에서 Python·프론트엔드 테스트를 실행하고, Python 브리지를 PyInstaller로 패키징한 뒤 Tauri MSI/NSIS 설치 파일과 서명된 업데이트 파일을 만듭니다. 파일이 준비되면 GitHub Release를 공개합니다.
 
 로컬에서 같은 브리지를 만들려면 다음을 실행합니다.
 
@@ -119,9 +119,9 @@ npm run tauri build
 
 배포된 앱은 시작할 때 GitHub Release의 최신 버전을 확인합니다. 새 버전이 있으면 중앙 화면에 알림이 표시되고, 사용자가 `업데이트` 버튼을 누르면 서명된 updater 파일을 다운로드·설치한 뒤 앱을 재시작합니다.
 
-자동 릴리즈와 updater 파일 서명에는 다음 저장소 Secret이 필요합니다.
+태그 기반 릴리즈와 updater 파일 서명에는 다음 저장소 Secret을 사용합니다.
 
-- `RELEASE_TOKEN`: 태그 푸시가 릴리즈 워크플로를 시작할 수 있도록 저장소 쓰기 권한을 가진 토큰
+- `RELEASE_TOKEN`: 설정한 경우 릴리즈 게시에 사용하는 토큰. 없으면 `GITHUB_TOKEN`을 사용
 - `TAURI_SIGNING_PRIVATE_KEY`: 로컬에서 생성한 `personal-agent.key` 파일의 전체 내용
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: 키 생성 시 비밀번호를 사용한 경우에만 설정
 
